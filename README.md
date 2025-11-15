@@ -47,6 +47,20 @@ Esta es una aplicación web simple desarrollada con Flask en Python que se conec
     ```
     La aplicación estará disponible en `http://127.0.0.1:5000/`.
 
+## Cómo Ejecutar la Aplicación Localmente
+
+Una vez que hayas completado los pasos de "Configuración Local" (instalación de dependencias y configuración del archivo `.env`), puedes iniciar la aplicación web Flask con el siguiente comando:
+
+```bash
+python app.py
+```
+
+Después de ejecutarlo, verás un mensaje en tu terminal indicando que el servidor web está en funcionamiento. Podrás acceder a la aplicación desde tu navegador web, generalmente en:
+
+`http://127.0.0.1:5000/`
+
+Abre esta URL en tu navegador para ver el listado de productos obtenidos de Azure Cosmos DB.
+
 ## Despliegue en Azure App Service con Azure CLI
 
 Para desplegar esta aplicación en Azure App Service utilizando la interfaz de línea de comandos de Azure (Azure CLI), sigue estos pasos:
