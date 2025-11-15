@@ -1,10 +1,11 @@
 import json
 import os
+import uuid
 
 import azure.cosmos.cosmos_client as cosmos_client
 import azure.cosmos.exceptions as exceptions
 from dotenv import load_dotenv
-from flask import Flask, render_template
+from flask import Flask, render_template, request, redirect, url_for
 
 app = Flask(__name__)
 
@@ -37,6 +38,7 @@ else:
 @app.route("/")
 def list_products():
     products = []
+    categories = []
     error_message = None
 
     if _cosmos_client is None:
@@ -47,13 +49,19 @@ def list_products():
         database = _cosmos_client.get_database_client(DATABASE_ID)
         container = database.get_container_client(CONTAINER_ID)
 
-        query = "SELECT c.id, c.nombre, c.categoria, c.precio FROM c"
+        # Obtener todos los productos
+        query_products = "SELECT c.id, c.nombre, c.categoria, c.precio FROM c"
         items_listados = container.query_items(
-            query=query, enable_cross_partition_query=True
+            query=query_products, enable_cross_partition_query=True
         )
+        products = list(items_listados)
 
-        for item in items_listados:
-            products.append(item)
+        # Obtener todas las categorías únicas
+        query_categories = "SELECT DISTINCT c.categoria FROM c"
+        category_items = container.query_items(
+            query=query_categories, enable_cross_partition_query=True
+        )
+        categories = [item['categoria'] for item in category_items]
 
     except exceptions.CosmosHttpResponseError as e:
         error_message = (
@@ -63,7 +71,110 @@ def list_products():
     except Exception as e:
         error_message = f"Ocurrió un error inesperado: {e}"
 
-    return render_template("index.html", products=products, error=error_message)
+    return render_template("index.html", products=products, categories=categories, error=error_message)
+
+
+@app.route("/add", methods=["POST"])
+def add_product():
+    if _cosmos_client is None:
+        return redirect(url_for("list_products"))
+
+    try:
+        database = _cosmos_client.get_database_client(DATABASE_ID)
+        container = database.get_container_client(CONTAINER_ID)
+
+        new_product = {
+            "id": str(uuid.uuid4()),
+            "nombre": request.form["nombre"],
+            "categoria": request.form["categoria"],
+            "precio": float(request.form["precio"]),
+        }
+
+        container.create_item(body=new_product)
+
+    except exceptions.CosmosHttpResponseError as e:
+        # Manejar error, por ejemplo, mostrar un mensaje al usuario
+        print(f"Error al agregar producto: {e.message}")
+    except Exception as e:
+        print(f"Ocurrió un error inesperado: {e}")
+
+    return redirect(url_for("list_products"))
+
+
+@app.route("/edit/<item_id>/<category>")
+def edit_product_form(item_id, category):
+    if _cosmos_client is None:
+        return redirect(url_for("list_products"))
+
+    product = None
+    categories = []
+    error_message = None
+    
+    try:
+        database = _cosmos_client.get_database_client(DATABASE_ID)
+        container = database.get_container_client(CONTAINER_ID)
+        
+        # Obtener el producto a editar
+        product = container.read_item(item=item_id, partition_key=category)
+
+        # Obtener todas las categorías para el desplegable
+        query_categories = "SELECT DISTINCT c.categoria FROM c"
+        category_items = container.query_items(
+            query=query_categories, enable_cross_partition_query=True
+        )
+        categories = [item['categoria'] for item in category_items]
+
+    except exceptions.CosmosHttpResponseError as e:
+        if e.status_code == 404:
+            error_message = "Producto no encontrado."
+        else:
+            error_message = f"Error de Cosmos DB: {e.message}"
+    except Exception as e:
+        error_message = f"Ocurrió un error: {e}"
+
+    return render_template("edit.html", product=product, categories=categories, error=error_message)
+
+
+@app.route("/update/<item_id>", methods=["POST"])
+def update_product(item_id):
+    if _cosmos_client is None:
+        return redirect(url_for("list_products"))
+
+    try:
+        database = _cosmos_client.get_database_client(DATABASE_ID)
+        container = database.get_container_client(CONTAINER_ID)
+
+        updated_product = {
+            "id": item_id,
+            "nombre": request.form["nombre"],
+            "categoria": request.form["categoria"],
+            "precio": float(request.form["precio"]),
+        }
+        
+        # upsert_item reemplazará el documento si ya existe
+        container.upsert_item(body=updated_product)
+
+    except Exception as e:
+        print(f"Error al actualizar producto: {e}")
+
+    return redirect(url_for("list_products"))
+
+
+@app.route("/delete/<item_id>/<category>", methods=["POST"])
+def delete_product(item_id, category):
+    if _cosmos_client is None:
+        return redirect(url_for("list_products"))
+
+    try:
+        database = _cosmos_client.get_database_client(DATABASE_ID)
+        container = database.get_container_client(CONTAINER_ID)
+        
+        container.delete_item(item=item_id, partition_key=category)
+
+    except Exception as e:
+        print(f"Error al eliminar producto: {e}")
+
+    return redirect(url_for("list_products"))
 
 
 if __name__ == "__main__":
